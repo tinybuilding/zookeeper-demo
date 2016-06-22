@@ -99,7 +99,7 @@ public class Master implements Watcher {
 
     void startZK() {
         try {
-            zk = new ZooKeeper("192.168.1.228:2181", 15000, this);
+            zk = new ZooKeeper(Config.CONNECT_STR, 15000, this);
         } catch (IOException e) {
             e.printStackTrace();
         }
