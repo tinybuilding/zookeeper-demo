@@ -60,6 +60,15 @@ public class Master implements Watcher {
         zk.getData("/master", false, masterCheckCallback, null);
     }
 
+    Watcher masterExistsWatcher = new Watcher() {
+        public void process(WatchedEvent e) {
+            if(e.getType() == Event.EventType.NodeDeleted) {
+                assert "/master".equals( e.getPath() );
+                runForMaster();
+            }
+        }
+    };
+
 //    // returns true if there is a master
 //    boolean checkMaster() {
 //        while (true) {
