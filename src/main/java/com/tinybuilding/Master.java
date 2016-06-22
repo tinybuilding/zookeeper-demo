@@ -20,42 +20,82 @@ public class Master implements Watcher {
     String serverId = Long.toString(new Random().nextLong());
     static boolean isLeader = false;
 
-    // returns true if there is a master
-    boolean checkMaster() {
-        while (true) {
-            try {
-                Stat stat = new Stat();
-                byte data[] = zk.getData("/master", false, stat);
-                isLeader = new String(data).equals(serverId);
-                return true;
-            } catch (KeeperException.NoNodeException e) {
-// no master, so try create again
-                return false;
-            } catch (KeeperException.ConnectionLossException e) {
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } catch (KeeperException e) {
-                e.printStackTrace();
+//    static boolean isLeader;
+    AsyncCallback.StringCallback masterCreateCallback = new AsyncCallback.StringCallback() {
+        public void processResult(int rc, String path, Object ctx, String name) {
+            switch(KeeperException.Code.get(rc)) {
+                case CONNECTIONLOSS:
+                    checkMaster();
+                    return;
+                case OK:
+                    isLeader = true;
+                    break;
+                default:
+                    isLeader = false;
+            }
+            System.out.println("I'm " + (isLeader ? "" : "not ") +
+                    "the leader");
+        }
+    };
+    void runForMaster() {
+        zk.create("/master", serverId.getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                CreateMode.EPHEMERAL, masterCreateCallback, null);
+    }
+
+    AsyncCallback.DataCallback masterCheckCallback = new AsyncCallback.DataCallback() {
+        public void processResult(int rc, String path, Object ctx, byte[] data,
+                           Stat stat) {
+            switch(KeeperException.Code.get(rc)) {
+                case CONNECTIONLOSS:
+                    checkMaster();
+                    return;
+                case NONODE:
+                    runForMaster();
+                    return;
             }
         }
+    };
+
+    void checkMaster() {
+        zk.getData("/master", false, masterCheckCallback, null);
     }
-    void runForMaster() throws InterruptedException {
-        while (true) {
-            try {
-                zk.create("/master", serverId.getBytes(),
-                        ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-                isLeader = true;
-                break;
-            } catch (KeeperException.NodeExistsException e) {
-                isLeader = false;
-                break;
-            } catch (KeeperException.ConnectionLossException e) {
-            } catch (KeeperException e) {
-                e.printStackTrace();
-            }
-            if (checkMaster()) break;
-        }
-    }
+
+//    // returns true if there is a master
+//    boolean checkMaster() {
+//        while (true) {
+//            try {
+//                Stat stat = new Stat();
+//                byte data[] = zk.getData("/master", false, stat);
+//                isLeader = new String(data).equals(serverId);
+//                return true;
+//            } catch (KeeperException.NoNodeException e) {
+//// no master, so try create again
+//                return false;
+//            } catch (KeeperException.ConnectionLossException e) {
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            } catch (KeeperException e) {
+//                e.printStackTrace();
+//            }
+//        }
+//    }
+//    void runForMaster() throws InterruptedException {
+//        while (true) {
+//            try {
+//                zk.create("/master", serverId.getBytes(),
+//                        ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+//                isLeader = true;
+//                break;
+//            } catch (KeeperException.NodeExistsException e) {
+//                isLeader = false;
+//                break;
+//            } catch (KeeperException.ConnectionLossException e) {
+//            } catch (KeeperException e) {
+//                e.printStackTrace();
+//            }
+//            if (checkMaster()) break;
+//        }
+//    }
 
     void startZK() {
         try {
