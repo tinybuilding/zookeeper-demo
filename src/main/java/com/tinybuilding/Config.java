@@ -5,5 +5,5 @@ package com.tinybuilding;
  */
 public class Config {
 
-    public static String CONNECT_STR = "localhost:2181";
+    public static String CONNECT_STR = "192.168.1.228:2181";
 }

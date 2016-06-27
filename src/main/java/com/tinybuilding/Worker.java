@@ -16,7 +16,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * Created by jyl on 2016/6/22.
@@ -30,6 +34,9 @@ public class Worker implements Watcher {
 
     String status = "idle";
     String name = "worker-" + serverId;
+
+    ExecutorService executor = Executors.newCachedThreadPool();
+    List<String> onGoingTasks;
 
     Worker(String hostPort) {
         this.hostPort = hostPort;
@@ -66,6 +73,70 @@ public class Worker implements Watcher {
             }
         }
     };
+
+    ///////// task watcher   ///////////////
+    Watcher newTaskWatcher = new Watcher() {
+        public void process(WatchedEvent e) {
+            if(e.getType() == Event.EventType.NodeChildrenChanged) {
+                assert new String("/assign/worker-"+ serverId).equals( e.getPath() );
+                getTasks();
+            }
+        }
+    };
+    void getTasks() {
+        zk.getChildren("/assign/" + name,
+                newTaskWatcher,
+                tasksGetChildrenCallback,
+                null);
+    }
+    AsyncCallback.ChildrenCallback tasksGetChildrenCallback = new AsyncCallback.ChildrenCallback() {
+        public void processResult(int rc,
+                                  String path,
+                                  Object ctx,
+                                  List<String> children) {
+            switch(KeeperException.Code.get(rc)) {
+                case CONNECTIONLOSS:
+                    getTasks();
+                    break;
+                case OK:
+                    if(children != null) {
+                        executor.execute(new Runnable() {
+                            List<String> children;
+                            DataCallback cb;
+                            public Runnable init (List<String> children,
+                                                  DataCallback cb) {
+                                this.children = children;
+                                this.cb = cb;
+                                return this;
+                            }
+                            public void run() {
+                                LOG.info("Looping into tasks");
+                                synchronized(onGoingTasks) {
+                                    for(String task : children) {
+                                        if(!onGoingTasks.contains( task )) {
+                                            LOG.trace("New task: {}", task);
+                                            zk.getData("/assign/" + name + "/" + task,
+                                                    false,
+                                                    cb,
+                                                    task);
+                                            onGoingTasks.add( task );
+                                        }
+                                    }
+                                }
+                            }
+                        }.init(children, taskDataCallback));
+                    }
+                    break;
+                default:
+                    System.out.println("getChildren failed: " +
+                            KeeperException.create(KeeperException.Code.get(rc), path));
+            }
+        }
+    };
+
+
+
+
 
     AsyncCallback.StatCallback statusUpdateCallback = new AsyncCallback.StatCallback() {
         public void processResult(int rc, String path, Object ctx, Stat stat) {
